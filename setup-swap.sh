@@ -290,34 +290,24 @@ interactive_menu() {
     echo ""
     
     # 显示系统信息
-    local memi|--interactive)
-                INTERACTIVE_MODE=true
-                shift
-                ;;
-            -r|--remove)
-                remove_only=false
-                shift
-                ;;
-            -h|--help)
-                show_usage
-                exit 0
-                ;;
-            *)
-                log_error "未知选项: $1"
-                show_usage
-                exit 1
-                ;;
-        esac
-    done
+    local mem_mb=$(get_total_memory_mb)
+    local mem_gb=$(awk "BEGIN {printf \"%.2f\", $mem_mb/1024}")
+    local recommended_swap=$(calculate_recommended_swap)
     
-    # 检查root权限
-    check_root "$@"
+    log_info "系统信息:"
+    echo "  - 操作系统: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo '未知')"
+    echo "  - 内核版本: $(uname -r)"
+    echo "  - 物理内存: ${mem_gb}GB (${mem_mb}MB)"
+    echo "  - 推荐Swap: $recommended_swap (内存的1倍)"
+    echo ""
     
-    # 如果是交互模式
-    if [ "$INTERACTIVE_MODE" = true ]; then
-        interactive_menu
-        exit 0
+    # 检查现有swap
+    if check_existing_swap 2>/dev/null; then
+        echo ""
     fi
+    echo ""
+    
+    # 主菜单
     echo "请选择操作:"
     echo "  1) 使用推荐配置 (Swap=${recommended_swap}, Swappiness=10)"
     echo "  2) 自定义Swap大小"
@@ -332,14 +322,7 @@ interactive_menu() {
     
     case $choice in
         1)
-      如果没有指定swap大小，使用推荐值（内存的1倍）
-    if [ -z "$SWAP_SIZE" ]; then
-        SWAP_SIZE=$(calculate_recommended_swap)
-        log_info "未指定Swap大小，使用推荐值: $SWAP_SIZE (内存的1倍)"
-        echo ""
-    fi
-    
-    #       SWAP_SIZE=$recommended_swap
+            SWAP_SIZE=$recommended_swap
             SWAPPINESS=10
             CACHE_PRESSURE=50
             log_info "已选择推荐配置"
@@ -592,7 +575,6 @@ show_current_swap_status() {
     echo ""
     read -p "按Enter键返回菜单..." dummy
     interactive_menu
-}   echo "  - vm.vfs_cache_pressure = $(sysctl -n vm.vfs_cache_pressure)"
 }
 
 # 主函数
@@ -618,6 +600,10 @@ main() {
                 SWAP_FILE="$2"
                 shift 2
                 ;;
+            -i|--interactive)
+                INTERACTIVE_MODE=true
+                shift
+                ;;
             -r|--remove)
                 remove_only=true
                 shift
@@ -636,6 +622,12 @@ main() {
     
     # 检查root权限
     check_root "$@"
+    
+    # 如果是交互模式
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        interactive_menu
+        exit 0
+    fi
     
     echo "================================"
     echo "  VPS Swap 配置脚本"
@@ -657,6 +649,13 @@ main() {
     if [ "$remove_only" = true ]; then
         remove_swap
         exit 0
+    fi
+    
+    # 如果没有指定swap大小，使用推荐值（内存的1倍）
+    if [ -z "$SWAP_SIZE" ]; then
+        SWAP_SIZE=$(calculate_recommended_swap)
+        log_info "未指定Swap大小，使用推荐值: $SWAP_SIZE (内存的1倍)"
+        echo ""
     fi
     
     # 验证参数
