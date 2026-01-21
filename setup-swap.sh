@@ -265,7 +265,8 @@ show_swap_status() {
     
     log_info "系统参数:"
     echo "  - vm.swappiness = $(sysctl -n vm.swappiness)"
- 
+    echo "  - vm.vfs_cache_pressure = $(sysctl -n vm.vfs_cache_pressure)"
+}
 
 # 获取系统内存大小(MB)
 get_total_memory_mb() {
