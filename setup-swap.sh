@@ -296,7 +296,8 @@ interactive_menu() {
     local recommended_swap=$(calculate_recommended_swap)
     
     log_info "系统信息:"
-    echo "  - 操作系统: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo '未知')"
+    local os_name=$(awk -F'"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null || echo "未知")
+    echo "  - 操作系统: ${os_name}"
     echo "  - 内核版本: $(uname -r)"
     echo "  - 物理内存: ${mem_gb}GB (${mem_mb}MB)"
     echo "  - 推荐Swap: $recommended_swap (内存的1倍)"
@@ -637,7 +638,8 @@ main() {
     
     # 显示系统信息
     log_info "系统信息:"
-    log_info "  - OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+    local os_name=$(awk -F'"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null || echo "未知")
+    log_info "  - OS: ${os_name}"
     log_info "  - 内核: $(uname -r)"
     log_info "  - 内存: $(free -h | awk 'NR==2{print $2}')"
     echo ""
