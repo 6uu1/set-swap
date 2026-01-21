@@ -27,9 +27,14 @@
 ### 1. 下载脚本
 
 ```bash
-wget https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh
-# 或
-curl -O https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh
+# 直接覆盖保存（推荐）
+wget -O setup-swap.sh https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh
+
+# 或使用curl
+curl -o setup-swap.sh https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh
+
+# 如果只是想“有新版本才更新”
+wget -N https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh
 ```
 
 ### 2. 添加执行权限
