@@ -24,6 +24,12 @@
 
 ## 快速开始
 
+```bash
+wget -O setup-swap.sh https://raw.githubusercontent.com/6uu1/set-swap/main/setup-swap.sh && chmod +x setup-swap.sh && sudo ./setup-swap.sh -i
+```
+
+
+
 ### 1. 下载脚本
 
 ```bash
