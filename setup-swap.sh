@@ -129,6 +129,41 @@ remove_swap() {
     log_info "Swap已成功删除"
 }
 
+# 清理现有swap（创建新swap前的准备工作）
+cleanup_existing_swap() {
+    local new_swap_file=$1
+    
+    # 获取所有当前活动的swap
+    local swap_entries=$(swapon --show=NAME --noheadings 2>/dev/null || true)
+    
+    if [ -z "$swap_entries" ]; then
+        return 0
+    fi
+    
+    log_info "正在清理现有swap..."
+    
+    # 关闭所有swap
+    swapoff -a 2>/dev/null || true
+    
+    # 删除旧的swap文件（跳过块设备/分区）
+    for entry in $swap_entries; do
+        if [ -f "$entry" ]; then
+            log_info "删除旧swap文件: $entry"
+            rm -f "$entry"
+        elif [ -b "$entry" ]; then
+            log_warn "检测到swap分区: $entry（分区不会被删除，仅取消挂载）"
+        fi
+    done
+    
+    # 清理fstab中所有旧的swap条目（后续会重新添加新的）
+    if [ -f /etc/fstab ] && grep -q 'swap' /etc/fstab 2>/dev/null; then
+        log_info "清理/etc/fstab中的旧swap条目..."
+        sed -i.bak '/swap/d' /etc/fstab
+    fi
+    
+    log_info "旧swap清理完成"
+}
+
 # 转换大小为MB
 size_to_mb() {
     local size=$1
@@ -215,13 +250,10 @@ configure_persistent_swap() {
     
     log_info "配置开机自动挂载swap..."
     
-    # 检查fstab中是否已有该条目
-    if ! grep -q "$swap_file" /etc/fstab; then
-        echo "$swap_file none swap sw 0 0" >> /etc/fstab
-        log_info "已添加到/etc/fstab"
-    else
-        log_warn "/etc/fstab中已存在该swap条目"
-    fi
+    # 先清理fstab中所有旧的swap条目，再添加新条目
+    sed -i.bak '/swap/d' /etc/fstab 2>/dev/null || true
+    echo "$swap_file none swap sw 0 0" >> /etc/fstab
+    log_info "已添加到/etc/fstab"
 }
 
 # 优化swap参数
@@ -238,8 +270,8 @@ optimize_swap_parameters() {
     # 永久保存
     log_info "保存到/etc/sysctl.conf..."
     
-    # 先删除旧的配置
-    sed -i.bak '/vm.swappiness/d; /vm.vfs_cache_pressure/d' /etc/sysctl.conf 2>/dev/null || true
+    # 先删除旧的配置（包括旧的注释行，避免重复运行后累积）
+    sed -i.bak '/vm.swappiness/d; /vm.vfs_cache_pressure/d; /# Swap优化配置/d' /etc/sysctl.conf 2>/dev/null || true
     
     # 添加新配置
     cat >> /etc/sysctl.conf << EOF
@@ -458,19 +490,39 @@ confirm_and_execute() {
     echo "  - Cache Pressure: $CACHE_PRESSURE"
     echo ""
     
-    # 检查磁盘空间
+    # 检查磁盘空间（考虑旧swap文件释放的空间）
     local required_mb=$(size_to_mb "$SWAP_SIZE")
     local available_mb=$(df / | awk 'NR==2 {print int($4/1024)}')
+    local reclaimable_mb=0
+    local old_swap_files=$(swapon --show=NAME --noheadings 2>/dev/null || true)
+    for entry in $old_swap_files; do
+        if [ -f "$entry" ]; then
+            local file_mb=$(du -m "$entry" 2>/dev/null | awk '{print int($1)}')
+            reclaimable_mb=$((reclaimable_mb + file_mb))
+        fi
+    done
+    local effective_available_mb=$((available_mb + reclaimable_mb))
+    
     echo "  - 需要空间: ${required_mb}MB"
-    echo "  - 可用空间: ${available_mb}MB"
+    echo "  - 当前可用: ${available_mb}MB"
+    if [ "$reclaimable_mb" -gt 0 ]; then
+        echo "  - 旧swap释放: +${reclaimable_mb}MB"
+        echo "  - 实际可用: ${effective_available_mb}MB"
+    fi
     echo ""
     
-    if [ $available_mb -lt $required_mb ]; then
+    if [ $effective_available_mb -lt $required_mb ]; then
         log_error "磁盘空间不足!"
         echo ""
         read -p "按Enter键返回菜单..." dummy
         interactive_menu
         return
+    fi
+    
+    # 提示将替换现有swap
+    if [ -n "$old_swap_files" ]; then
+        log_warn "注意: 现有swap将被完全替换（旧swap文件将被删除）"
+        echo ""
     fi
     
     read -p "确认创建? [Y/n]: " confirm
@@ -496,12 +548,8 @@ execute_swap_creation() {
         return
     fi
     
-    # 如果存在旧swap，先关闭
-    if check_existing_swap 2>/dev/null; then
-        echo ""
-        log_warn "将关闭现有swap..."
-        swapoff -a 2>/dev/null || true
-    fi
+    # 清理现有swap（关闭、删除旧文件、清理fstab）
+    cleanup_existing_swap "$SWAP_FILE"
     
     # 创建和配置swap
     create_swap_file "$SWAP_SIZE" "$SWAP_FILE"
@@ -675,15 +723,12 @@ main() {
     log_info "  - Cache Pressure: $CACHE_PRESSURE"
     echo ""
     
-    # 检查磁盘空间
+    # 清理现有swap（关闭、删除旧文件、清理fstab）
+    cleanup_existing_swap "$SWAP_FILE"
+    
+    # 检查磁盘空间（旧swap已清理，空间已释放）
     local required_mb=$(size_to_mb "$SWAP_SIZE")
     check_disk_space $((required_mb + 100))  # 额外100MB缓冲
-    
-    # 如果存在旧swap，先关闭
-    if check_existing_swap; then
-        log_warn "将关闭现有swap..."
-        swapoff -a 2>/dev/null || true
-    fi
     
     # 创建和配置swap
     create_swap_file "$SWAP_SIZE" "$SWAP_FILE"
