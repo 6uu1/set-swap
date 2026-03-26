@@ -82,7 +82,8 @@ check_existing_swap() {
         local swap_count=$(grep -c "^/" /proc/swaps 2>/dev/null || true)
         if [ "$swap_count" -gt 0 ]; then
             log_warn "发现现有swap:"
-            swapon --show
+            # 兼容 Alpine Linux (BusyBox) - 使用 /proc/swaps 而不是 swapon --show
+            cat /proc/swaps
             return 0
         fi
     fi
@@ -95,8 +96,9 @@ check_existing_swap() {
 remove_swap() {
     log_info "开始删除swap..."
     
-    # 获取所有swap文件
-    local swap_files=$(swapon --show=NAME --noheadings 2>/dev/null || true)
+    # 获取所有swap文件 - 兼容 Alpine Linux (BusyBox)
+    # 从 /proc/swaps 解析，跳过标题行
+    local swap_files=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
     
     if [ -z "$swap_files" ]; then
         log_info "没有找到活动的swap"
@@ -134,8 +136,9 @@ remove_swap() {
 cleanup_existing_swap() {
     local new_swap_file=$1
     
-    # 获取所有当前活动的swap
-    local swap_entries=$(swapon --show=NAME --noheadings 2>/dev/null || true)
+    # 获取所有当前活动的swap - 兼容 Alpine Linux (BusyBox)
+    # 从 /proc/swaps 解析，跳过标题行
+    local swap_entries=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
     
     if [ -z "$swap_entries" ]; then
         return 0
@@ -293,7 +296,8 @@ EOF
 show_swap_status() {
     log_info "当前swap状态:"
     echo "================================"
-    swapon --show
+    # 兼容 Alpine Linux (BusyBox) - 使用 /proc/swaps 和 free
+    cat /proc/swaps
     echo ""
     free -h
     echo "================================"
@@ -514,7 +518,8 @@ confirm_and_execute() {
     local required_mb=$(size_to_mb "$SWAP_SIZE")
     local available_mb=$(df / | awk 'NR==2 {print int($4/1024)}')
     local reclaimable_mb=0
-    local old_swap_files=$(swapon --show=NAME --noheadings 2>/dev/null || true)
+    # 兼容 Alpine Linux (BusyBox) - 从 /proc/swaps 解析
+    local old_swap_files=$(awk 'NR>1 {print $1}' /proc/swaps 2>/dev/null || true)
     for entry in $old_swap_files; do
         if [ -f "$entry" ]; then
             local file_mb=$(du -m "$entry" 2>/dev/null | awk '{print int($1)}')
