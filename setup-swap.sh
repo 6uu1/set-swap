@@ -3,7 +3,8 @@
 #############################################
 # VPS Swap 自动配置脚本
 # 用途: 在Linux VPS上创建和配置swap文件
-# 作者: Auto-generated
+# 支持: Ubuntu, Debian, CentOS, Alpine Linux 等主流发行版
+# 作者: 6uu1
 # 日期: 2026-01-21
 #############################################
 
@@ -214,6 +215,8 @@ create_swap_file() {
     fi
     
     # 尝试使用fallocate (更快)
+    # 注意：在某些文件系统（ext4、XFS、btrfs）上，fallocate 可能创建带"洞"的文件
+    # 这对于 swap 文件来说是不合适的，所以如果失败会自动回退到 dd
     if command -v fallocate &> /dev/null; then
         log_info "使用fallocate创建swap文件..."
         fallocate -l "$size" "$swap_file"
@@ -328,7 +331,24 @@ interactive_menu() {
     local recommended_swap=$(calculate_recommended_swap)
     
     log_info "系统信息:"
-    local os_name=$(awk -F'"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null || echo "未知")
+    # 改进的操作系统检测，支持 Alpine Linux
+    local os_name="未知"
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="${PRETTY_NAME:-$NAME}"
+        # 如果没有 PRETTY_NAME，尝试构建一个
+        if [ -z "$os_name" ] || [ "$os_name" = "未知" ]; then
+            if [ -n "$NAME" ] && [ -n "$VERSION_ID" ]; then
+                os_name="$NAME $VERSION_ID"
+            elif [ -n "$NAME" ]; then
+                os_name="$NAME"
+            fi
+        fi
+    elif [ -f /etc/alpine-release ]; then
+        # Alpine Linux 旧版本可能只有这个文件
+        os_name="Alpine Linux $(cat /etc/alpine-release)"
+    fi
+    
     echo "  - 操作系统: ${os_name}"
     echo "  - 内核版本: $(uname -r)"
     echo "  - 物理内存: ${mem_gb}GB (${mem_mb}MB)"
@@ -686,7 +706,24 @@ main() {
     
     # 显示系统信息
     log_info "系统信息:"
-    local os_name=$(awk -F'"' '/^PRETTY_NAME=/{print $2}' /etc/os-release 2>/dev/null || echo "未知")
+    # 改进的操作系统检测，支持 Alpine Linux
+    local os_name="未知"
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="${PRETTY_NAME:-$NAME}"
+        # 如果没有 PRETTY_NAME，尝试构建一个
+        if [ -z "$os_name" ] || [ "$os_name" = "未知" ]; then
+            if [ -n "$NAME" ] && [ -n "$VERSION_ID" ]; then
+                os_name="$NAME $VERSION_ID"
+            elif [ -n "$NAME" ]; then
+                os_name="$NAME"
+            fi
+        fi
+    elif [ -f /etc/alpine-release ]; then
+        # Alpine Linux 旧版本可能只有这个文件
+        os_name="Alpine Linux $(cat /etc/alpine-release)"
+    fi
+    
     log_info "  - OS: ${os_name}"
     log_info "  - 内核: $(uname -r)"
     log_info "  - 内存: $(free -h | awk 'NR==2{print $2}')"
